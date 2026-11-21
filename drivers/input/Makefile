@@ -34,3 +34,7 @@ obj-$(CONFIG_INPUT_KEYCOMBO)	+= keycombo.o
 obj-$(CONFIG_RMI4_CORE)		+= rmi4/
 
 obj-$(CONFIG_SENSORS_HALL)	+= hall_sensor.o
+
+# TB-9707F: weak fallbacks for symbols whose providers this defconfig
+# does not build (see drivers/input/tb9707f_compat.c)
+obj-y	+= tb9707f_compat.o

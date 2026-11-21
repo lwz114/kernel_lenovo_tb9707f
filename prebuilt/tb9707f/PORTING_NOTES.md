@@ -69,6 +69,11 @@
    方案需要它，CI 在 `use_kernelsu=true` 时会自动打开。
 5. **panel 依赖 stock dtbo**：任何刷机脚本都不得写 `dtbo`；`anykernel.sh` 里
    `do.dtbo=0`、`BLOCK=boot`、`IS_SLOT_DEVICE=1`。
+6. **链接期缺符号（已用 weak 垫片解决）**：`hall_disable_fp_pk` 的实现在
+   `drivers/input/hall_sensor.c`（`CONFIG_SENSORS_HALL`），`usb_is_plugin()` 的实现在 Goodix
+   触摸驱动（`CONFIG_TOUCHSCREEN_GOODIX_BRL`），两者的消费者（`qpnp-power-on.c`、`smb5-lib.c`、
+   `gf_spi.c`）却是无条件编译的。`drivers/input/tb9707f_compat.c` 提供 weak 默认实现，
+   打开上述任一配置会被强符号覆盖。
 
 ## 5. vermagic 对齐（Wi-Fi 能否加载的关键）
 
