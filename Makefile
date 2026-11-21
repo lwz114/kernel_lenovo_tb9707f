@@ -525,6 +525,19 @@ KBUILD_AFLAGS	+= $(CLANG_FLAGS)
 export CLANG_FLAGS
 endif
 
+# TB-9707F: this 4.19 tree predates most of the diagnostics modern clang
+# releases ship, and the cloud builders get a compiler newer than the one
+# Lenovo used.  None of the flags below change generated code; they only keep
+# a diagnostics-only warning from failing the build through
+# -Werror=unknown-warning-option or a downstream -Werror makefile.  cc-option
+# keeps clang versions that do not know a flag from erroring out.
+KBUILD_CFLAGS	+= $(call cc-option,-Wno-unused-but-set-variable)
+KBUILD_CFLAGS	+= $(call cc-option,-Wno-format-overflow)
+KBUILD_CFLAGS	+= $(call cc-option,-Wno-format-truncation)
+KBUILD_CFLAGS	+= $(call cc-option,-Wno-stringop-truncation)
+KBUILD_CFLAGS	+= $(call cc-option,-Wno-address-of-packed-member)
+KBUILD_CFLAGS	+= $(call cc-option,-Wno-frame-address)
+
 RETPOLINE_CFLAGS_GCC := -mindirect-branch=thunk-extern -mindirect-branch-register
 RETPOLINE_VDSO_CFLAGS_GCC := -mindirect-branch=thunk-inline -mindirect-branch-register
 RETPOLINE_CFLAGS_CLANG := -mretpoline-external-thunk
