@@ -55,19 +55,20 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update -y
+          # gcc-multilib/g++-multilib and the arm32 cross compiler conflict with
+          # gcc-11-aarch64-linux-gnu on jammy ("Conflicts: gcc-multilib"), and
+          # CONFIG_COMPAT_VDSO is off in this defconfig, so the 32-bit pieces of
+          # the OEM recipe are best-effort only.
           sudo apt-get install -y --no-install-recommends \
             bc bison build-essential ccache cpio curl device-tree-compiler flex \
-            g++-multilib gcc-multilib git gnupg gperf imagemagick lib32z1-dev \
-            libc6-dev-i386 liblz4-tool libncurses-dev libsdl1.2-dev libssl-dev \
-            libtinfo5 libxml2 libxml2-utils lzop pngcrush python-is-python3 rsync \
-            schedtool squashfs-tools xsltproc zip zlib1g-dev \
-            gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu \
-            gcc-arm-linux-gnueabi binutils-arm-linux-gnueabi
-          # The OEM recipe still lists these; they no longer exist in jammy.
-          # Keep them best-effort so a missing 32-bit dev package cannot fail CI.
-          sudo apt-get install -y lib32ncurses5-dev lib32readline-dev \
-            || sudo apt-get install -y lib32ncurses-dev lib32readline-dev \
-            || echo 'legacy 32-bit dev packages unavailable, continuing'
+            git gnupg gperf imagemagick liblz4-tool libncurses-dev libsdl1.2-dev \
+            libssl-dev libtinfo5 libxml2 libxml2-utils lzop pngcrush \
+            python-is-python3 rsync schedtool squashfs-tools xsltproc zip \
+            zlib1g-dev gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu
+          sudo apt-get install -y g++-multilib gcc-multilib libc6-dev-i386 \
+            lib32z1-dev lib32ncurses5-dev lib32readline-dev \
+            gcc-arm-linux-gnueabi binutils-arm-linux-gnueabi \
+            || echo '::warning::legacy 32-bit packages skipped (conflict with the aarch64 cross toolchain)'
           aarch64-linux-gnu-gcc --version | head -1
           aarch64-linux-gnu-elfedit --version | head -1
 
