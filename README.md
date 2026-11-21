@@ -1,4 +1,4 @@
-# kernel_lenovo_tb9707f
+# kernel_lenovo_tb9707f 暂时无法开机
 
 **Lenovo Legion Y700 (TB-9707F) 内核移植 —— 基于联想小新 Pad Pro 12.6 (TB-Q706F) 开源 4.19 源码**
 
