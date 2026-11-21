@@ -408,8 +408,16 @@ PYTHON3		= python3
 CHECK		= sparse
 
 # Use the wrapper for the compiler.  This wrapper scans for new
-# warnings and causes the build to stop upon encountering them
+# warnings and causes the build to stop upon encountering them.
+#
+# TB-9707F: kept opt-in.  The wrapper is python2-only, lives in a tree that is
+# now built with LLVM=1 (where REAL_CC is not defined), and turns every warning
+# into a build failure - none of which suits a cloud build of 4.19 with a
+# modern clang.  Enable with "make TB9707F_WARN_WRAPPER=1" if you want the
+# original Qualcomm/Lenovo behaviour.
+ifeq ($(TB9707F_WARN_WRAPPER),1)
 CC		= $(PYTHON) $(srctree)/scripts/gcc-wrapper.py $(REAL_CC)
+endif
 
 CHECKFLAGS     := -D__linux__ -Dlinux -D__STDC__ -Dunix -D__unix__ \
 		  -Wbitwise -Wno-return-void -Wno-unknown-attribute $(CF)
