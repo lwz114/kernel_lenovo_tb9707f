@@ -85,15 +85,19 @@
 ## 6. 云端构建
 
 ```
-make O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 \
+make O=out ARCH=arm64 LLVM=1 \
      CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
      vendor/tb9707f_defconfig
-make O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 \
+make O=out ARCH=arm64 LLVM=1 \
      CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
      Image Image.gz dtbs -j$(nproc)
 ```
 
 `CROSS_COMPILE*` 不能省：本树的 `LLVM=1` 分支仍用它推导 `--target=` 与 binutils 前缀。
+
+**不要加 `LLVM_IAS=1`**：`arch/arm64/include/asm/atomic_lse.h` 的 `.arch_extension lse` 与
+`ALTERNATIVE` 的 `.org` 只有 GNU as 能处理，clang IAS 会报 `instruction requires: lse` /
+`invalid .org offset`。原厂也是 clang + GNU as(2.27)。
 
 另：`Makefile` 里原来无条件把 `CC` 包成 `scripts/gcc-wrapper.py`（把所有 warning 当 error，且脚本是
 python2 语法、`REAL_CC` 在 `LLVM=1` 下不存在）。已改为 `TB9707F_WARN_WRAPPER=1` 才启用，默认直连 clang，

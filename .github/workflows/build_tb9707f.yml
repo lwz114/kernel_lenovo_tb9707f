@@ -34,7 +34,12 @@ env:
   TARGET_RELEASE: '4.19.157-perf+'
   CLANG_REV: clang-r416183b
   CLANG_REF: refs/tags/android-12.0.0_r1
-  KMAKE: 'make O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi-'
+  # NB: no LLVM_IAS=1.  This 4.19 tree uses .arch_extension lse and the
+  # ALTERNATIVE .org macros in arch/arm64/include/asm/atomic_lse.h, which the
+  # clang integrated assembler rejects ("instruction requires: lse",
+  # "invalid .org offset").  GNU as via aarch64-linux-gnu- is used instead,
+  # exactly like the stock Lenovo build (clang + GNU as 2.27).
+  KMAKE: 'make O=out ARCH=arm64 LLVM=1 CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi-'
   CCACHE_DIR: ${{ github.workspace }}/.ccache
   CCACHE_BASEDIR: ${{ github.workspace }}
   CCACHE_COMPILERCHECK: content
