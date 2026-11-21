@@ -9,6 +9,10 @@
 > 基底提交：`93058f3a4 arm64: configs: q706f: enable PM_AUTOSLEEP for repowerd`（分支 `halium-11.0`，
 > 该分支是本仓库中唯一带 `q706f` 设备支持的）。
 
+> **历史说明**：上游为节省带宽做了浅克隆，直接 shallow 推送会被 GitHub 的 index-pack 拒绝，
+> 因此本仓库以 `93058f3a4` 的目录树为根，重新落了一个 `import:` 提交，其上 7 个提交即本次移植的全部改动；
+> 完整的 `halium-11.0` 上游历史请见原仓库。
+
 ---
 
 ## 当前状态
