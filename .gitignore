@@ -141,3 +141,13 @@ arch/arm64/boot/dts/vendor/
 
 # Tech package directories
 techpack/
+
+# TB-9707F port: device dumps stay out of git (only prebuilt/tb9707f/ ships)
+stock_boot.img
+stock_dtbo.img
+*.img
+
+# TB-9707F port: the blanket ".*" rule above must not hide the CI workflow
+!.github/
+!.github/workflows/
+!.github/workflows/*.yml

@@ -1,0 +1,207 @@
+name: build-tb9707f
+
+# TB-9707F (Lenovo Legion Y700 gen1, kona/SM8250) kernel build.
+# Everything runs in the cloud; the device is only used to capture the stock
+# boot metadata that lives in prebuilt/tb9707f/ (see PORTING_NOTES.md).
+
+on:
+  push:
+    branches:
+      - tb9707f
+      - main
+      - master
+    paths-ignore:
+      - '**/*.md'
+  workflow_dispatch:
+    inputs:
+      use_kernelsu:
+        description: 'Integrate KernelSU v0.9.5 (kprobe) into the kernel'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  ARCH: arm64
+  DEVICE: TB-9707F
+  DEFCONFIG: vendor/tb9707f_defconfig
+  # Must match the vermagic of every /vendor/lib/modules/*.ko on the device.
+  TARGET_RELEASE: '4.19.157-perf+'
+  CLANG_REV: clang-r416183b
+  CLANG_REF: refs/tags/android-12.0.0_r1
+  KMAKE: 'make O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi-'
+  CCACHE_DIR: ${{ github.workspace }}/.ccache
+  CCACHE_BASEDIR: ${{ github.workspace }}
+  CCACHE_COMPILERCHECK: content
+  USE_KERNELSU: ${{ github.event.inputs.use_kernelsu || 'false' }}
+
+jobs:
+  build:
+    name: "build (${{ github.event.inputs.use_kernelsu == 'true' && 'ksu' || 'vanilla' }})"
+    runs-on: ubuntu-22.04
+    timeout-minutes: 150
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y --no-install-recommends \
+            bc bison build-essential ccache cpio curl device-tree-compiler flex \
+            g++-multilib gcc-multilib git gnupg gperf imagemagick lib32z1-dev \
+            libc6-dev-i386 liblz4-tool libncurses-dev libsdl1.2-dev libssl-dev \
+            libtinfo5 libxml2 libxml2-utils lzop pngcrush python-is-python3 rsync \
+            schedtool squashfs-tools xsltproc zip zlib1g-dev \
+            gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu \
+            gcc-arm-linux-gnueabi binutils-arm-linux-gnueabi
+          # The OEM recipe still lists these; they no longer exist in jammy.
+          # Keep them best-effort so a missing 32-bit dev package cannot fail CI.
+          sudo apt-get install -y lib32ncurses5-dev lib32readline-dev \
+            || sudo apt-get install -y lib32ncurses-dev lib32readline-dev \
+            || echo 'legacy 32-bit dev packages unavailable, continuing'
+          aarch64-linux-gnu-gcc --version | head -1
+          aarch64-linux-gnu-elfedit --version | head -1
+
+      - name: Cache AOSP clang
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/toolchain/clang
+          key: clang-${{ env.CLANG_REV }}-v1
+
+      - name: Fetch AOSP clang ${{ env.CLANG_REV }}
+        run: |
+          CLANG_DIR="$GITHUB_WORKSPACE/toolchain/clang"
+          if [ ! -x "$CLANG_DIR/bin/clang" ]; then
+            rm -rf "$CLANG_DIR"; mkdir -p "$CLANG_DIR"
+            ok=0
+            for ref in "$CLANG_REF" refs/heads/android12-release; do
+              url="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/${ref}/${CLANG_REV}.tar.gz"
+              echo "trying $url"
+              if curl -fL --retry 2 --retry-delay 5 --connect-timeout 20 -o /tmp/clang.tar.gz "$url"; then
+                tar -xzf /tmp/clang.tar.gz -C "$CLANG_DIR" && { ok=1; break; }
+              fi
+            done
+            rm -f /tmp/clang.tar.gz
+            if [ "$ok" != 1 ]; then
+              # gitiles can be slow/unreachable from some networks
+              echo 'gitiles unavailable, falling back to the LineageOS prebuilt mirror'
+              rm -rf "$CLANG_DIR"; mkdir -p "$CLANG_DIR"
+              git clone --depth=1 -b lineage-20.0 \
+                https://github.com/LineageOS/android_prebuilts_clang_kernel_linux-x86_clang-r416183b.git \
+                "$CLANG_DIR"
+            fi
+          fi
+          test -x "$CLANG_DIR/bin/clang" || { echo '::error::clang download failed'; exit 1; }
+          "$CLANG_DIR/bin/clang" --version
+          "$CLANG_DIR/bin/ld.lld" --version
+
+      - name: Restore ccache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-${{ runner.os }}-${{ github.run_id }}
+          restore-keys: |
+            ccache-${{ runner.os }}-
+
+      - name: Set up ccache wrapper
+        run: |
+          sudo mkdir -p /usr/lib/ccache
+          mkdir -p "$GITHUB_WORKSPACE/.ccache-bin"
+          for cc in clang clang++; do
+            ln -sf "$(command -v ccache)" "$GITHUB_WORKSPACE/.ccache-bin/$cc"
+          done
+          echo "CCACHE_PATH=$GITHUB_WORKSPACE/toolchain/clang/bin" >> "$GITHUB_ENV"
+          echo "PATH=$GITHUB_WORKSPACE/.ccache-bin:$GITHUB_WORKSPACE/toolchain/clang/bin:$PATH" >> "$GITHUB_ENV"
+          ccache --max-size=4G
+          ccache --version | head -1
+
+      - name: Integrate KernelSU
+        if: env.USE_KERNELSU == 'true'
+        run: |
+          # v0.9.5 is the last release with non-GKI (4.14+/kprobe) support.
+          curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s v0.9.5
+          ls -d KernelSU
+
+      - name: Configure kernel
+        run: |
+          # Pin the "+" of the 4.19.157-perf+ vermagic: scripts/setlocalversion
+          # reads .scmversion before it ever looks at git, so an injected
+          # KernelSU tree (dirty worktree) can no longer turn it into "perf++".
+          printf '+' > .scmversion
+          $KMAKE $DEFCONFIG
+          if [ "$USE_KERNELSU" = "true" ]; then
+            scripts/config --file out/.config \
+              -e KSU -e KPROBES -e KPROBE_EVENTS -e HAVE_KPROBES -e KALLSYMS_ALL
+            $KMAKE olddefconfig
+          fi
+          grep -E '^CONFIG_(LOCALVERSION|MODULE_SIG_FORCE|MODULE_SIG)=' out/.config || true
+          $KMAKE -s kernelrelease
+
+      - name: Build Image, Image.gz and dtbs
+        run: |
+          set -o pipefail
+          $KMAKE -j"$(nproc)" Image Image.gz dtbs 2>&1 | tee build.log
+          ls -lh out/arch/arm64/boot/Image out/arch/arm64/boot/Image.gz
+
+      - name: Verify vermagic
+        run: |
+          rel="$(cat out/include/config/kernel.release)"
+          echo "kernel.release = $rel"
+          if [ "$rel" != "$TARGET_RELEASE" ]; then
+            echo "::error::kernel release is '$rel' but the stock vendor modules need '$TARGET_RELEASE'"
+            exit 1
+          fi
+          if ! strings out/vmlinux | grep -qx "$TARGET_RELEASE SMP preempt mod_unload modversions aarch64"; then
+            echo "::error::built vmlinux does not advertise the expected vermagic"
+            strings out/vmlinux | grep -m3 'mod_unload' || true
+            exit 1
+          fi
+          echo "vermagic OK: $TARGET_RELEASE SMP preempt mod_unload modversions aarch64"
+          grep -q '^# CONFIG_MODULE_SIG_FORCE is not set$' out/.config
+          echo "MODULE_SIG_FORCE is off"
+
+      - name: Package AnyKernel3
+        run: |
+          git clone --depth=1 https://github.com/osm0sis/AnyKernel3.git ak3
+          rm -rf ak3/.git ak3/README.md
+          cp prebuilt/tb9707f/anykernel.sh ak3/anykernel.sh
+          cp out/arch/arm64/boot/Image.gz ak3/Image.gz
+          # Stock kona base DTB, byte-identical to the one inside boot_a.
+          # dtbo is never touched: the panel/touch nodes live there.
+          cp prebuilt/tb9707f/dtb ak3/dtb
+          sha256sum ak3/dtb
+          suffix=""
+          [ "$USE_KERNELSU" = "true" ] && suffix="-KernelSU"
+          name="AnyKernel3-${DEVICE}-$(date -u +%Y%m%d)-${GITHUB_SHA::7}${suffix}.zip"
+          ( cd ak3 && zip -r9 "../$name" . -x '*.git*' )
+          echo "AK3_ZIP=$name" >> "$GITHUB_ENV"
+          unzip -l "$name"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.DEVICE }}-kernel-${{ github.sha }}${{ env.USE_KERNELSU == 'true' && '-KernelSU' || '' }}
+          if-no-files-found: error
+          path: |
+            out/arch/arm64/boot/Image
+            out/arch/arm64/boot/Image.gz
+            out/.config
+            build.log
+            ${{ env.AK3_ZIP }}
+
+      - name: Upload build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log-${{ github.sha }}
+          if-no-files-found: ignore
+          path: build.log
